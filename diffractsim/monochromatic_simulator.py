@@ -4,7 +4,8 @@ import time
 import progressbar
 from .util.constants import *
 from .propagation_methods import angular_spectrum_method, two_steps_fresnel_method, bluestein_method, apply_transfer_function
-
+from .propagation_methods.angular_spectrum_method import angular_spectrum_method_torch
+import torch
 import numpy as np
 from .util.backend_functions import backend as bd
 
@@ -340,4 +341,47 @@ class MonochromaticField:
             "The wavelength, dimensions and sampling of the interfering fields must be identical")
 
 
+    from .visualization import plot_colors, plot_phase, plot_intensity, plot_longitudinal_profile_colors, plot_longitudinal_profile_intensity
+
+class MonochromaticFieldTorch:
+    def __init__(self, wavelength, extent_x, extent_y, Nx, Ny, intensity=0.1, batch_size=1):
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.extent_x = extent_x
+        self.extent_y = extent_y
+        self.Nx = Nx
+        self.Ny = Ny
+
+        self.dx = extent_x / Nx
+        self.dy = extent_y / Ny
+
+        self.x = self.dx * (torch.arange(Nx, device=self.device) - Nx // 2)
+        self.y = self.dy * (torch.arange(Ny, device=self.device) - Ny // 2)
+        self.xx, self.yy = torch.meshgrid(self.x, self.y, indexing='xy')
+
+        E0 = torch.sqrt(torch.tensor(intensity, device=self.device))
+
+        self.E = torch.ones((batch_size, Ny, Nx), dtype=torch.complex64, device=self.device) * E0
+        self.λ = wavelength
+        self.z = 0
+
+    def add(self, optical_element, **kwargs):
+        self.E = optical_element.get_E(self.E, self.xx, self.yy, self.λ, **kwargs)
+
+    def propagate(self, z, scale_factor=1):
+        self.z += z
+        self.E = angular_spectrum_method_torch(self, self.E, z, self.λ, scale_factor)
+
+    def get_intensity(self):
+        return torch.real(self.E * torch.conj(self.E))
+    
+    def make_spatially_incoherent(self):
+        """
+        Adds spatially incoherent phase to a coherent field.
+        E: complex field tensor of shape [B, H, W]
+        Returns: modified E with randomized phase
+        """
+        B, H, W = self.E.shape
+        random_phase = 2 * torch.pi * torch.rand(B, H, W, device=self.E.device)
+        return torch.abs(self.E) * torch.exp(1j * random_phase)
+    
     from .visualization import plot_colors, plot_phase, plot_intensity, plot_longitudinal_profile_colors, plot_longitudinal_profile_intensity

@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from ..util.backend_functions import backend as bd
 from .diffractive_element import DOE
 from ..util.scaled_FT import scaled_fourier_transform
@@ -79,3 +80,37 @@ class Lens(DOE):
         PSF = 1 / (z*λ)**2 * PSF
         
         return PSF
+    
+    
+class Lens_torch(DOE):
+    def __init__(self, f, radius=None, aberration=None):
+        """
+        Creates a thin lens with a focal length f.
+
+        radius: circular aperture radius.
+        aberration: function (x, y) returning phase aberration in meters.
+        """
+        self.f = f
+        self.radius = radius
+        self.aberration = aberration
+
+    def get_transmittance(self, xx, yy, λ):
+        # Assumes xx, yy, λ are PyTorch tensors
+        device = xx.device
+        dtype = xx.dtype
+
+        t = torch.ones_like(xx, dtype=dtype, device=device)
+
+        if self.aberration is not None:
+            # Apply aberration phase term
+            aberration_phase = self.aberration(xx, yy)
+            t = t * torch.exp(2j * torch.pi / λ * aberration_phase)
+
+        if self.radius is not None:
+            # Apply aperture
+            mask = (xx**2 + yy**2) < self.radius**2
+            t = torch.where(mask, t, torch.zeros_like(t))
+
+        # Apply ideal lens phase delay
+        lens_phase = torch.exp(-1j * torch.pi / (λ * self.f) * (xx**2 + yy**2))
+        return t * lens_phase

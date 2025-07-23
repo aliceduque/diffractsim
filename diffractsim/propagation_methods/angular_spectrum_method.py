@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from ..util.backend_functions import backend as bd
 from ..util.scaled_FT import scaled_fourier_transform
 
@@ -59,3 +60,37 @@ def angular_spectrum_method(simulation, E, z, λ, scale_factor = 1):
 
     return E
 
+
+def angular_spectrum_method_torch(simulation, E, z, λ, scale_factor=1):
+    """
+    Angular spectrum method rewritten in PyTorch for GPU execution.
+    E should be a complex64 or complex128 tensor on the desired device (usually CUDA).
+    """
+    device = E.device
+
+    # 2D FFT of the input field
+    fft_c = torch.fft.fft2(E)
+    c = torch.fft.fftshift(fft_c)
+
+    # Frequency coordinates
+    fx = torch.fft.fftshift(torch.fft.fftfreq(simulation.Nx, d=simulation.dx, device=device))
+    fy = torch.fft.fftshift(torch.fft.fftfreq(simulation.Ny, d=simulation.dy, device=device))
+    fxx, fyy = torch.meshgrid(fx, fy, indexing='xy')
+
+    # Argument inside the square root for kz
+    argument = (2 * torch.pi) ** 2 * ((1. / λ) ** 2 - fxx ** 2 - fyy ** 2)
+
+    tmp = torch.sqrt(torch.abs(argument))
+    kz = torch.where(argument >= 0, tmp, 1j * tmp)
+
+    if scale_factor == 1:
+
+        # Propagate the angular spectrum a distance z
+        propagated = c * torch.exp(1j * kz * z)
+        E_out = torch.fft.ifft2(torch.fft.ifftshift(propagated))
+
+    else:
+        # Scaling — not fully implemented yet
+        raise NotImplementedError("Scale factor != 1 not implemented in this PyTorch version.")
+
+    return E_out

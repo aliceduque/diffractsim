@@ -22,9 +22,8 @@ class DOE(ABC):
     def __add__(self, DOE2):
         return DOE_mix(self, DOE2)
 
-    def get_E(self, E, xx, yy, λ):
-        # by default the behavior of all DOE is linear in amplitude
-        return E*self.get_transmittance(xx, yy, λ)
+    def get_E(self, E, xx, yy, λ, **kwargs):
+        return E * self.get_transmittance(xx, yy, λ, **kwargs)
 
     def get_coherent_PSF(self,  xx, yy, z, λ):
         """ 
